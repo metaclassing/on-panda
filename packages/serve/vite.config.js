@@ -54,25 +54,6 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir: path.join(packageDir, 'web'),
       emptyOutDir: true,
-    },
-    server: {
-      proxy: {
-        '/cast': {
-          target: 'http://127.0.0.1:9200',
-          changeOrigin: true,
-          rewrite: path => path.replace(/^\/cast/, '/')
-        },
-        '/debug': {
-          target: 'http://127.0.0.1:9201',
-          changeOrigin: true,
-          rewrite: path => path.replace(/^\/debug/, '/')
-        },
-        '/2debug': {
-          target: 'http://127.0.0.1:9202',
-          changeOrigin: true,
-          rewrite: path => path.replace(/^\/2debug/, '/')
-        }
-      }
     }
   }
 })
