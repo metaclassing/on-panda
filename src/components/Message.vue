@@ -40,7 +40,7 @@
     <div v-else class="editorAndDetails">
       <div class="messagePrimaryActionRow">
         <el-input ref="messageContentInput" class="message-content messagePrimaryActionContent" v-model="messageDraft"
-          type="textarea" :placeholder="t('chatMessage.emptyMessageIgnored')" :autosize="{ minRows: 2, maxRows: 50 }"
+          type="textarea" :placeholder="props.placeholder || t('chatMessage.emptyMessageIgnored')" :autosize="{ minRows: 2, maxRows: props.messageIndex === -2 ? 8 : 50 }"
           @keydown.ctrl.enter="handlePrimaryAction" @paste="handlePaste" @focus="handleEditorFocus"
           @blur="handleEditorBlur" />
 
@@ -98,6 +98,8 @@ const globalStore = useGlobalStore()
 const { t } = useI18n()
 
 const props = defineProps({
+  placeholder: { type: String, default: '' },
+  hidePrimaryAction: { type: Boolean, default: false },
   message: {
     type: Object,
     default: {}
@@ -183,7 +185,7 @@ const canRunToolCalls = computed(() => {
 })
 const isRunPrimaryAction = computed(() => hasToolCalls.value)
 const showPrimaryActionButton = computed(() => {
-  return isRunPrimaryAction.value || getMessage()['role'] === 'tool' || !isRenderRole.value || isRenderContentEditing.value
+  return !props.hidePrimaryAction && (isRunPrimaryAction.value || getMessage()['role'] === 'tool' || !isRenderRole.value || isRenderContentEditing.value)
 })
 const primaryActionLabel = computed(() => {
   return isRunPrimaryAction.value ? t('toolCallControl.run') + "▶️" : t('chatMessage.send') + "➡️"
@@ -373,6 +375,8 @@ async function handlePrimaryAction() {
   await handleSend()
   localStorage.setItem('onPandaIsOldUser', 'true')
 }
+
+defineExpose({ submit: () => { if (!isPrimaryActionDisabled.value) return handlePrimaryAction() } })
 
 
 function handlePasteMultimodal(event) {

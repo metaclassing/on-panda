@@ -74,3 +74,13 @@ stats.html
 secret-iap
 secret
 public/img/
+
+# Deployment-specific configuration, captures, and local scripts
+.env
+.env.*
+!.env.example
+/web_config.json5
+/web_config.json
+/lab-*.mjs
+*.sse
+playwright-report/

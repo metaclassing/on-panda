@@ -1,15 +1,23 @@
 <template>
+    <button v-if="reasoningPatches.length" class="reasoning-toggle" type="button"
+        :aria-expanded="reasoningExpanded" @click="toggleReasoning">
+        <span aria-hidden="true">{{ reasoningExpanded ? '▾' : '▸' }}</span>
+        Reasoning <span class="reasoning-count">{{ reasoningTokenCount ? `· ${reasoningTokenCount.toLocaleString()} tokens` : '' }}</span>
+        <span class="reasoning-toggle-action">{{ reasoningExpanded ? 'Hide' : 'Show' }}</span>
+    </button>
     <p ref="onPandaResponseTextRef" class="OnPandaResponseText onPandaContainers"
         style="white-space: pre-wrap;cursor: default; 
     overflow-wrap: anywhere;">
         <span class="PatchSpan" v-for="patch in patches"
+            v-show="reasoningExpanded || !isReasoningPatch(patch)"
+            :class="{ 'reasoning-patch': isReasoningPatch(patch) }"
             :key="`t${pandaState.uuid.value}-d${pandaState.currentDialogKey.value}-p${patch.index}:${patch.patch}`"
             :style='{
                 "border-bottom": "3px solid " + probToColor(patch.prob),
                 ...(patch.tokens.some(t => t.bifurcationPoint) ? { "background-color": "#e99" } : {}),
                 ...(patch.tokens.some(t => t.pruned) ? { "text-decoration": "line-through", "color": "#777" } : {}),
                 ...(patch.tokens.some(t => t.selected) ? { "background-color": "#3064ce", "color": "#fff" } : {}),
-                ...(patch.tokens.some(t => t.delta?.reasoning) ? { "color": "#757575" } : {}),
+                ...(isReasoningPatch(patch) ? { "color": "var(--panda-muted, #757575)" } : {}),
                 // ...(patch.tokens.some(t => t.delta?.reasoning) ? { "text-decoration": "underline dotted #999" } : {}),
                 // ...(patch.tokens.some(t => t.delta?.reasoning) ? { "background": "linear-gradient(to bottom, transparent 85%, #09f5 85%)" } : {}),
                 // ...(patch.tokens.some(t => t.modifiedByEditSelection) ? { "border-bottom": "3px solid #09f" } : {}),
@@ -26,13 +34,22 @@
         </el-tooltip>
     </p>
 
-    <div @mouseover="floatPatchPanel.waitingToHide = false" @mouseleave="floatPatchPanel.waitingToHide = true"
-        ref="floatPatchPanelRef"
-        style="position: fixed; padding-top: 4px;background-color: rgba(200, 200, 200, 0.3); z-index: 10; max-width: 90%;" :style="{
+    <div v-if="floatPatchPanel.visible" class="token-picker-bridge" aria-hidden="true"
+        @mouseenter="keepTokenPickerOpen" @mouseleave="scheduleTokenPickerClose"
+        :style="{ left: `${pickerBridge.x}px`, top: `${pickerBridge.y}px`, width: `${pickerBridge.width}px`, height: `${pickerBridge.height}px` }" />
+    <div @mouseenter="keepTokenPickerOpen" @mouseleave="scheduleTokenPickerClose"
+        ref="floatPatchPanelRef" class="token-picker"
+        style="position: fixed; box-sizing: border-box; background-color: var(--panda-surface, #eee); z-index: 10; max-width: calc(100vw - 16px); overflow: auto; overscroll-behavior: contain;" :style="{
             left: `${floatPatchPanel.x}px`,
             top: `${floatPatchPanel.y}px`,
+            maxHeight: `${floatPatchPanel.maxHeight}px`,
         }" v-if="floatPatchPanel.visible">
         <!-- `padding-top: 4px` to avoid next line's token activate @mouseover  -->
+        <div class="token-picker-toolbar">
+            <button type="button" class="token-popup-close" aria-label="Close token picker"
+                title="Close token picker (Esc)" @pointerdown.stop.prevent="closeFloatPatchPanel"
+                @click.stop="closeFloatPatchPanel">Close ×</button>
+        </div>
         <div class="floatPatchPanel" style="position: relative;">
             <div v-for="token in activatePatch?.tokens?.filter(shouldRenderTokenPanel)"
                 class="tokenPanel" style="vertical-align:top; display: inline-block; padding: 5px;padding-left: 0px;">
@@ -42,12 +59,10 @@
                 </div>
                 <div class="tokenLogprobItems">
                     <div v-for="logprobItem in (token?.logprobs?.content?.[0]?.top_logprobs || []).concat([{ finish_reason: 'stop' }])"
-                        style="display: block; background-color: #eee; cursor:pointer" @contextmenu.prevent
+                        class="token-candidate" @contextmenu.prevent
                         @mousedown="(event) => handleLogprobItemClick(event, token, logprobItem)"
-                        @mouseover="activateLogprobItem = logprobItem; activateToken = token"
-                        @mouseenter="$event.target.style.backgroundColor = '#ddd'"
-                        @mouseleave="$event.target.style.backgroundColor = ''">
-                        <span class="tokenSpan" style="color: #444;">{{ (logprobItem.finish_reason &&
+                        @mouseover="activateLogprobItem = logprobItem; activateToken = token">
+                        <span class="tokenSpan">{{ (logprobItem.finish_reason &&
                             `&lt;|${logprobItem.finish_reason}|&gt;`) || truncateTokenSpanText(tokenTextToHtml(logprobItem.token)) }}</span>
                         <span v-if="logprobItem.logprob !== undefined"
                             :style='{ "background-color": probToColor(Math.exp(logprobItem.logprob), 0.18) }'
@@ -57,8 +72,6 @@
                 </div>
             </div>
             <footer class="tokenPanel" style="min-height: 24px; padding: 5px;">
-                <button :icon="Close" @click="closeFloatPatchPanel"
-                    style="padding: 0px; margin: 0 0px -5px 0px; float:right;">❌</button>
                 <span v-if="activateToken.tokenInfo" style="font-family: Monospace;"> info:
                     {{ JSON.stringify(activateToken.tokenInfo) }}<br>
                 </span>
@@ -100,7 +113,7 @@
 
 <script setup>
 
-import { ref, computed, watch, inject } from 'vue'
+import { ref, computed, watch, inject, nextTick, onBeforeUnmount } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useI18n } from 'vue-i18n'
 
@@ -166,7 +179,8 @@ function appendFinishReason(token) {
 
 const getTokenDisplayText = (token) => tokenToDisplayString(token, tokens.value)
 
-const shouldRenderTokenPanel = (token) => token?.delta?.content !== undefined || token.finish_reason || getTokenDisplayText(token)
+const shouldRenderTokenPanel = (token) => token.finish_reason || getTokenDisplayText(token) ||
+    token.logprobs?.content?.length
 
 const tokenToSpanHTML = (token) => {
     const displayText = getTokenDisplayText(token)
@@ -184,6 +198,55 @@ const patchToSpanHTML = (patch) => {
 }
 
 const patches = computed(() => tokensToPatches(tokens.value));
+// Retain the original patches and indices: folding must not change token edits.
+const reasoningPatchIndexes = computed(() => {
+    const indexes = new Set()
+    const template = responseState.viewResponseTemplate.value
+    const message = responseState.finalMessage.value
+    if (template.responseTemplateType === 'plain_text' && message.reasoning) {
+        // Plain-text templates deliberately keep protocol markers in content.
+        // Use the template's source mapping instead of modifying token channels.
+        const { templatedPrompt, keyPathPromptMapping } = template.apply(message)
+        const reasoning = keyPathPromptMapping.find(mapping => mapping.keyPath[0] === 'reasoning')
+        if (!reasoning) return indexes
+        const closedPrefix = template.apply({
+            role: message.role, reasoning: message.reasoning, finish_reason: 'reasoning_end',
+        }).templatedPrompt
+        const end = templatedPrompt.startsWith(closedPrefix) ? closedPrefix.length : reasoning.textEnd
+        const start = keyPathPromptMapping[0] === reasoning ? 0 : reasoning.textStart
+        let offset = 0
+        for (const patch of patches.value) {
+            const next = offset + patch.patch.length
+            if (next > offset && offset >= start && next <= end) indexes.add(patch.index)
+            offset = next
+        }
+    } else {
+        for (const patch of patches.value) {
+            if (patch.tokens.some(token => token.delta?.reasoning)
+                && patch.tokens.every(token => !token.delta?.content && !token.delta?.tool_calls?.length)) {
+                indexes.add(patch.index)
+            }
+        }
+    }
+    return indexes
+})
+const isReasoningPatch = patch => reasoningPatchIndexes.value.has(patch.index)
+const reasoningPatches = computed(() => patches.value.filter(isReasoningPatch))
+const reasoningTokenCount = computed(() => reasoningPatches.value.reduce((count, patch) =>
+    count + patch.tokens.reduce((n, token) => n + (token.logprobs?.content?.filter(item =>
+        typeof item.logprob === 'number').length || 0), 0), 0))
+const reasoningExpanded = ref(false)
+function toggleReasoning() {
+    closeFloatPatchPanel()
+    floatInputPatch.value.visible = false
+    selectedTextState.floatSelectedOperationPanel.value.visible = false
+    reasoningExpanded.value = !reasoningExpanded.value
+}
+watch(() => pandaState.currentDialogKey.value, () => {
+    reasoningExpanded.value = false
+    closeFloatPatchPanel()
+    floatInputPatch.value.visible = false
+})
 
 const selectedTextState = SelectedTextStateClosure({
     onPandaResponseTextRef,
@@ -197,6 +260,7 @@ const handleMouseEnterPatchSpan = (event) => {
     if (event.buttons === 1) {
         return // If left mouse button is pressed, don't open panel
     }
+    keepTokenPickerOpen()
 
     const patchIndex = event.target.attributes["patch-index"].value
     const patch = patches.value[parseInt(patchIndex)]
@@ -213,14 +277,20 @@ const handleMouseEnterPatchSpan = (event) => {
 }
 
 function handleMouseLeavePatchSpan(event) {
-    // console.log(event)
-    floatPatchPanel.value.waitingToHide = true
-    setTimeout(() => {
-        if (floatPatchPanel.value.waitingToHide) {
-            closeFloatPatchPanel()
-        }
-    }, 300);
+    scheduleTokenPickerClose()
 }
+
+let pickerHideTimer
+function keepTokenPickerOpen() {
+    clearTimeout(pickerHideTimer)
+    floatPatchPanel.value.waitingToHide = false
+}
+function scheduleTokenPickerClose() {
+    clearTimeout(pickerHideTimer)
+    floatPatchPanel.value.waitingToHide = true
+    pickerHideTimer = setTimeout(closeFloatPatchPanel, 300)
+}
+onBeforeUnmount(() => clearTimeout(pickerHideTimer))
 
 function isEventForCopy(event) {
     // if the event is triggered with the Alt key or middle mouse button, copy the text
@@ -242,6 +312,8 @@ function handleMouseDownPatchSpan(event, patch) {
 }
 
 function closeFloatPatchPanel() {
+    clearTimeout(pickerHideTimer)
+    activatePatch.value.target?.classList.remove('ActivatePatchSpan')
     floatPatchPanel.value.visible = false;
     floatPatchPanel.value.waitingToHide = false;
     activatePatch.value = {}
@@ -332,9 +404,21 @@ const floatPatchPanel = ref({
     waitingToHide: false,
     x: 0,
     y: 0,
+    maxHeight: 400,
 })
 
 const floatPatchPanelRef = ref(null)
+const pickerBridge = ref({ x: 0, y: 0, width: 0, height: 0 })
+
+function updatePickerBridge(anchor, panel, placeBelow) {
+    // Cover the gap and the narrow strip beside an offset menu. A diagonal
+    // approach to a candidate must not land on tokens in the line underneath.
+    const left = Math.max(0, Math.min(anchor.left, panel.left) - 2)
+    const right = Math.min(window.innerWidth, Math.max(anchor.right, panel.right) + 2)
+    const top = placeBelow ? anchor.bottom : panel.top
+    const bottom = placeBelow ? panel.bottom : anchor.top
+    pickerBridge.value = { x: left, y: top, width: right - left, height: Math.max(0, bottom - top) }
+}
 
 
 // exceptTouch=true to avoide touch device close floatPatchPanel by click on another patchSpan
@@ -351,15 +435,37 @@ function setFloatPatchPanelBelow(element) {
     if (!element) {
         return
     }
-    const cellRect = element.getBoundingClientRect();
-    floatPatchPanel.value.x = cellRect.left - 3
-    floatPatchPanel.value.y = cellRect.bottom - 4
-    if (floatPatchPanel.value.x + 120 > window.innerWidth) {
-        // avoid floatPatchPanel out of window
-        floatPatchPanel.value.x = floatPatchPanel.value.x - 85
+    const anchor = element.getBoundingClientRect()
+    const margin = 8, gap = 12
+    if (anchor.bottom <= margin || anchor.top >= window.innerHeight - margin || !element.getClientRects().length) {
+        closeFloatPatchPanel()
+        return
     }
+    const below = Math.max(0, window.innerHeight - anchor.bottom - gap - margin)
+    const above = Math.max(0, anchor.top - gap - margin)
+    // Constrain the menu to one side of its token, including its first paint.
+    // A tall candidate list scrolls inside that space instead of covering text.
+    const placeBelow = below >= 300 || below >= above
+    const maxHeight = placeBelow ? below : above
+    floatPatchPanel.value.maxHeight = maxHeight
+    floatPatchPanel.value.x = Math.max(margin, anchor.left + 12)
+    floatPatchPanel.value.y = placeBelow ? anchor.bottom + gap : anchor.top - gap - maxHeight
+    updatePickerBridge(anchor, {
+        left: floatPatchPanel.value.x, right: floatPatchPanel.value.x + 200,
+        top: floatPatchPanel.value.y, bottom: floatPatchPanel.value.y + maxHeight,
+    }, placeBelow)
     floatPatchPanel.value.waitingToHide = false;
     floatPatchPanel.value.visible = true;
+    nextTick(() => {
+        if (!floatPatchPanel.value.visible || activatePatch.value.target !== element || !element.isConnected || !floatPatchPanelRef.value) return
+        const panel = floatPatchPanelRef.value.getBoundingClientRect()
+        floatPatchPanel.value.x = Math.max(margin, Math.min(anchor.left + 12, window.innerWidth - panel.width - margin))
+        floatPatchPanel.value.y = placeBelow ? anchor.bottom + gap : anchor.top - panel.height - gap
+        updatePickerBridge(anchor, {
+            left: floatPatchPanel.value.x, right: floatPatchPanel.value.x + panel.width,
+            top: floatPatchPanel.value.y, bottom: floatPatchPanel.value.y + panel.height,
+        }, placeBelow)
+    })
 }
 
 
@@ -397,8 +503,9 @@ function setFloatInputPatch(event, patch) {
 
 }
 
-function handleReactiveFunctions() {
-    setFloatPatchPanelBelow()
+function handleReactiveFunctions(event) {
+    if (event?.target instanceof Node && floatPatchPanelRef.value?.contains(event.target)) return
+    if (floatPatchPanel.value.visible) setFloatPatchPanelBelow(activatePatch.value.target)
     selectedTextState.setFloatSelectedOperationPanelBelow()
 }
 
@@ -409,11 +516,34 @@ handleScrollDivFunctions.push(handleReactiveFunctions)
 responseState.registerInResponseText({ closeFloatPatchPanel })
 
 useEventListener(window, 'resize', handleReactiveFunctions)
-useEventListener(window, 'scroll', handleReactiveFunctions)
+useEventListener(window, 'scroll', handleReactiveFunctions, { capture: true, passive: true })
 
 </script>
 
 <style scoped>
+.token-picker-bridge { position: fixed; z-index: 9; }
+.token-picker { min-width: 180px; border: 1px solid var(--el-border-color, #ccc); border-radius: 6px; }
+.token-picker-toolbar { position: sticky; top: 0; z-index: 1; display: flex; justify-content: flex-end; padding: 4px; background: var(--panda-surface, #eee); }
+.reasoning-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--el-border-color, #ddd);
+    border-radius: 6px;
+    background: var(--el-fill-color-light, #f5f7fa);
+    color: var(--el-text-color-regular, #606266);
+    cursor: pointer;
+    text-align: left;
+    font: inherit;
+    font-size: 13px;
+}
+.reasoning-toggle-action { margin-left: auto; color: var(--el-color-primary, #409eff); }
+.reasoning-count { color: var(--panda-muted, #757575); }
+.token-candidate { display: block; background: var(--panda-surface, #eee); cursor: pointer; }
+.token-candidate:hover { background: var(--panda-hover, #ddd); }
+.token-candidate .tokenSpan { color: var(--el-text-color-primary, #444); }
 .floatPatchPanelHead .tokenLogprobItems {
     display: block;
 }

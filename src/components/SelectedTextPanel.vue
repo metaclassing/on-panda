@@ -134,7 +134,7 @@ watch(floatSelectedOperationPanel, (newValue) => {
             </el-tooltip>
         </el-button-group>
         <div v-show="floatSelectedOperationPanel.replacementInputVisible"
-            style="display: flex; flex-direction: column; gap: 4px; background-color: white; padding: 7px;">
+            style="display: flex; flex-direction: column; gap: 4px; background-color: var(--panda-surface, white); padding: 7px;">
             <textarea ref="replacementTextareaRef" v-model="replacementText" type="text"
                 :placeholder="t('selectedTextPanel.editSelectionTextPlaceholder')" style="height: 60px; width:auto;" @focus="$event.target.select()" />
             <div style="display: flex; justify-content: flex-end; gap: 6px;">

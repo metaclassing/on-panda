@@ -187,7 +187,7 @@ import { sha256Uint8Array } from './hashUtils.js'
 
 export function useEventListener(target, event, callback, options) {
   onMounted(() => target.addEventListener(event, callback, options))
-  onUnmounted(() => target.removeEventListener(event, callback))
+  onUnmounted(() => target.removeEventListener(event, callback, options))
 }
 
 export function closeFloatPanelMeta(refElement, closeFunction, usingEscapeKey = true, exceptTouch = false) {

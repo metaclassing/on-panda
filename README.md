@@ -2,6 +2,10 @@
 
 A web app for token visualization and control, model inspection, data annotation, and more.
 
+This fork adds a dark chat interface with conversation branches, collapsible
+reasoning, and a steadier token picker. See [the chat interface notes](docs/chat-interface.md)
+for source setup, configuration, and the optional native DeepSeek continuation adapter.
+
 <div align="center">
 
 <a href="https://on-panda.github.io/img/fig1_UI-v4.png">

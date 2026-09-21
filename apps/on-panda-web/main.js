@@ -2,6 +2,8 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import OnPandaWeb from '../../src/OnPandaWeb.vue'
 import { onPandaPlugin } from '../../src/index.js'
+import 'element-plus/theme-chalk/dark/css-vars.css'
+import './theme.css'
 
 window.isOnPandaWeb = true
 

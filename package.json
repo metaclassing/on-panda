@@ -32,7 +32,9 @@
     "analyze:core": "cd packages/on-panda-core && pnpm vite build --mode analyze",
     "preview": "node packages/serve/bin/serve.js",
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs --fix --ignore-path .gitignore",
-    "prepublishOnly": "pnpm build"
+    "prepublishOnly": "pnpm build",
+    "test:continuation": "node src/utils/apiProtocols/vllmDeepSeekContinuation.test.js",
+    "test:chat-ui": "pnpm build:web && node tests/chat-ui.mjs"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.x",

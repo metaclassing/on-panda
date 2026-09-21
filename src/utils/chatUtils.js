@@ -301,13 +301,12 @@ export function clearTokenObject(token, { keepTopLogprobs = false } = {}) {
     if (token.logprobs?.content && token.logprobs.content[0]) {
         if (!keepTopLogprobs) {
             delete token.logprobs.content[0].top_logprobs
+            delete token.logprobs.content[0].bytes
         } else if (token.logprobs.content[0].top_logprobs) {
             for (const topLogprob of token.logprobs.content[0].top_logprobs) {
-                delete topLogprob.bytes
                 delete topLogprob.token_piece
             }
         }
-        delete token.logprobs.content[0].bytes
         delete token.logprobs.content[0].token_piece
     }
     // clear items that value is null

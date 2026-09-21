@@ -357,8 +357,8 @@ const maskedKeyInApiConfig = computed(function maskKeyInApiConfig() {
             <summary>
                 <small style="color: #bbb;"><b>{{ t('common.advancedControl') }}</b></small>
             </summary>
-            <div
-                style="background-color: antiquewhite ;padding: 15px 0px 15px 0px; border-radius: 10px; max-width: 1024px;">
+            <div class="advanced-controls"
+                style="padding: 15px 0px 15px 0px; border-radius: 10px; max-width: 1024px;">
                 <el-form-item label="top_p">
                     <el-input-number v-model="chatConfig.top_p" :min="0" :max="1" :step="0.01" size="small" />
                 </el-form-item>

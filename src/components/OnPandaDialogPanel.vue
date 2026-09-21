@@ -74,9 +74,14 @@ function clearNewRoundMessage() {
           @deleteMessage="operationCenter.clearOrDeleteMessage(message, messageIndex)" @focus="operationCenter.editPrompt.before()"
           @blur="operationCenter.editPrompt.after()" /> -->
                 <!-- change edit in compoment to edit in operationCenter -->
-                <Message v-for="(message, messageIndex) in messages"
-                    :key="message.role + messageToSeq(message) + messageIndex" :message="message"
-                    :messageIndex="messageIndex" :operationCenter="operationCenter" />
+                <template v-for="(message, messageIndex) in messages"
+                    :key="message.role + messageToSeq(message) + messageIndex">
+                    <details v-if="message.role === 'system'" class="system-prompt-disclosure">
+                        <summary>System prompt</summary>
+                        <Message :message="message" :messageIndex="messageIndex" :operationCenter="operationCenter" />
+                    </details>
+                    <Message v-else :message="message" :messageIndex="messageIndex" :operationCenter="operationCenter" />
+                </template>
             </div>
         </div>
         <details v-if="promptLogprobsResponseState" class="prompt-logprobs-details">

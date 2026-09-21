@@ -125,6 +125,7 @@ import AnnotatorPanel from './AnnotatorPanel.vue'
 const { t } = useI18n()
 
 const props = defineProps({
+    autoFollow: { type: Boolean, default: true },
     responseState: {
         type: Object,
         required: true
@@ -298,7 +299,7 @@ function handleAgenticControlButtonClick() {
 }
 
 const buttonRowAutoFollow = {
-    enabled: true,
+    enabled: props.autoFollow,
     shouldFollow: false,
     isPinned: false,
     isStoppedByUser: false,

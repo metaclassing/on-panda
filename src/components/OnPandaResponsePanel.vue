@@ -16,6 +16,7 @@ import ToolCallControlPanel from './ToolCallControlPanel.vue'
 import WaitingInfo from './widgets/WaitingInfo.vue'
 
 const props = defineProps({
+    chatLayout: { type: Boolean, default: false },
     responseState: {
         type: Object,
         description: 'The response state object',
@@ -26,6 +27,7 @@ const isMobile = computed(() => globalStore.isMobile)
 const { t } = useI18n()
 
 const responseState = props.responseState
+const showTokens = ref(false)
 const pandaState = responseState.pandaState
 const tokens = responseState.viewTokens
 const generationTokens = responseState.tokens
@@ -158,31 +160,36 @@ function handleScrollDivFunction(e) {
 onMounted(async () => {
     if (!globalStore.cleanMode) {
         scrollDiv.value.addEventListener('scroll', handleScrollDivFunction);
-        shortPanelAutoFollow.start()
+        if (!props.chatLayout) shortPanelAutoFollow.start()
     }
 })
 
 onBeforeUnmount(() => {
     if (!globalStore.cleanMode) {
         scrollDiv.value.removeEventListener('scroll', handleScrollDivFunction);
-        shortPanelAutoFollow.stop()
+        if (!props.chatLayout) shortPanelAutoFollow.stop()
     }
 })
 
 watch(() => globalStore.cleanMode, async function watchCleanMode(cleanMode) {
     if (cleanMode) {
         scrollDiv.value.removeEventListener('scroll', handleScrollDivFunction);
-        shortPanelAutoFollow.stop()
+        if (!props.chatLayout) shortPanelAutoFollow.stop()
         return
     }
     await nextTick()
     scrollDiv.value.addEventListener('scroll', handleScrollDivFunction);
-    shortPanelAutoFollow.start()
+    if (!props.chatLayout) shortPanelAutoFollow.start()
 })
 </script>
 
 <template>
-    <div class="OnPandaResponsePanel onPandaContainers" :style="globalStore.cleanMode ? { maxWidth: '1024px' } : {}">
+    <div class="OnPandaResponsePanel onPandaContainers" :class="{ 'chat-response': props.chatLayout }" :style="globalStore.cleanMode ? { maxWidth: '1024px' } : {}">
+        <div v-if="props.chatLayout && !globalStore.cleanMode" class="response-view-tabs" role="tablist" aria-label="Assistant output view">
+            <button type="button" role="tab" :aria-selected="!showTokens" @click="showTokens = false">Response</button>
+            <button type="button" role="tab" :aria-selected="showTokens" @click="showTokens = true">Tokens</button>
+            <span v-if="showTokens" class="token-view-hint">Hover a token · choose an alternative to branch</span>
+        </div>
         <div class="finalMessageHeadBar" style="display: flex; justify-content: space-between;"
             :style="isMobile ? {} : { width: '50%' }">
             <MessageRole :message="responseState.isPromptLogprobsState.value ? { role: 'prompt' } : finalMessage" />
@@ -199,12 +206,12 @@ watch(() => globalStore.cleanMode, async function watchCleanMode(cleanMode) {
                     <el-button :icon="DArrowRight" size="small" :disabled="!tokens?.length"
                         @click="operationCenter.continueGenerating()" />
                 </el-tooltip>
-                <el-tooltip v-if="requestStatus.generating" :content="t('tooltips.stopGenerating')" placement="top">
-                    <el-button :icon="VideoPause" size="small" @click="operationCenter.stopAgenticLoop()" />
+                <el-tooltip v-if="agenticLoopStatus.running" :content="t('tooltips.stopGenerating')" placement="top">
+                    <el-button :icon="VideoPause" size="small" aria-label="Stop generation" @click="operationCenter.stopAgenticLoop()">{{ props.chatLayout ? 'Stop' : '' }}</el-button>
                 </el-tooltip>
-                <!-- <el-tooltip content="try again" placement="top">
-              <el-button :icon="Refresh" size="small" @click="operationCenter.generateNew()" />
-            </el-tooltip> -->
+                <el-button v-if="props.chatLayout && !agenticLoopStatus.running" :icon="Refresh" size="small"
+                    aria-label="Regenerate this response" :disabled="!finalMessageAsText"
+                    @click="operationCenter.generateNew()">Regenerate</el-button>
                 <el-tooltip v-if="0" content="edit (TBD)" placement="top">
                     <el-button :icon="Edit" size="small" :disabled="true || !finalMessage.content" />
                 </el-tooltip>
@@ -233,7 +240,7 @@ watch(() => globalStore.cleanMode, async function watchCleanMode(cleanMode) {
                 &nbsp;&nbsp;&nbsp;
                 <hr v-if="!isMobile" style="color:#eee; margin-top: -5px; margin-bottom: 4px">
             </footer>
-            <el-switch v-if="isMobile" v-model="scrollSwitch.isSwitched.value" inline-prompt active-text="raw"
+            <el-switch v-if="isMobile && !props.chatLayout" v-model="scrollSwitch.isSwitched.value" inline-prompt active-text="raw"
                 inactive-text="MD" @change="scrollSwitch.scrollToPosition"
                 style="margin-right: 8px;--el-switch-on-color: #aaa; --el-switch-off-color: #aaa; width:45px" />
         </div>
@@ -259,21 +266,23 @@ watch(() => globalStore.cleanMode, async function watchCleanMode(cleanMode) {
 
 
             </small>
-            <small style="color: #888;" v-if="!isMobile"> rendered markdown </small>
+            <small style="color: #888;" v-if="!isMobile && !props.chatLayout"> rendered markdown </small>
         </div>
 
         <div class="finalMessageTwoPanel" v-if="!globalStore.cleanMode"
             style="width: 100%;overflow:scroll;overflow-y:hidden; padding-bottom: 3px;" ref="scrollDiv">
             <div ref="finalMessageTwoPanelBodyRef" style="display: flex; justify-content: space-between;"
-                :style="{ 'width': isMobile ? '195%' : '100%' }">
-                <div ref="rawMessagePanelRef" class="final-message-half-panel" :style="rawMessagePanelStyle">
-                    <div style="background-color: #eee;">
+                :style="{ 'width': isMobile && !props.chatLayout ? '195%' : '100%' }">
+                <div ref="rawMessagePanelRef" class="final-message-half-panel" :style="rawMessagePanelStyle"
+                    v-show="!props.chatLayout || showTokens">
+                    <div class="raw-token-surface">
                         <WaitingInfo v-if="!tokens.length" v-bind="waitingInfoProps" />
                         <OnPandaResponseText :responseState="responseState" />
                     </div>
                 </div>
-                <hr style="color:#eee">
-                <div ref="markdownMessagePanelRef" class="final-message-half-panel" :style="markdownMessagePanelStyle">
+                <hr v-if="!props.chatLayout" style="color:#eee">
+                <div ref="markdownMessagePanelRef" class="final-message-half-panel" :style="markdownMessagePanelStyle"
+                    v-show="!props.chatLayout || !showTokens">
                     <MarkdownResponse :content="finalMessageAsText" :waiting-info-props="waitingInfoProps" />
                 </div>
             </div>
@@ -282,7 +291,7 @@ watch(() => globalStore.cleanMode, async function watchCleanMode(cleanMode) {
             <MarkdownResponse :content="finalMessageAsText" :waiting-info-props="waitingInfoProps" />
         </div>
         <ToolCallControlPanel :responseState="responseState" />
-        <DialogKeysFooter :pandaState="pandaState" style="padding-top: 10px; margin-bottom:2px;" />
+        <DialogKeysFooter v-if="!props.chatLayout" :pandaState="pandaState" style="padding-top: 10px; margin-bottom:2px;" />
     </div>
 </template>
 

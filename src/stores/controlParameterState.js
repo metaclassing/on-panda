@@ -290,28 +290,10 @@ export function ControlParameterStateClosure({ apiConfigs = null, modelNameTags 
                 break
             }
         }
-        const changedChatConfig = {}
         for (const key of chatConfigControllableKeys) { // apply apiConfigChosen.chat_config
             if (key in apiConfigChosen.chat_config) {
-                // Using chatConfigControllableRaw to avoid adjusting parameters causes recomputed
-                if (key !== 'model' && JSON.stringify(apiConfigChosen.chat_config[key]) !== JSON.stringify(chatConfigControllableRaw[key])) {
-                    changedChatConfig[key] = apiConfigChosen.chat_config[key]
-                }
                 chatConfigControllable.value[key] = apiConfigChosen.chat_config[key]
             }
-        }
-        if (Object.keys(changedChatConfig).length > 0) {
-            // If ElMessage is poped up at beginning, will raise error:
-            // TypeError: Cannot read properties of null (reading 'insertBefore')
-            setTimeout(() => {
-                if (isMounted.value) {
-                    ElMessage.warning({
-                        message: `Change the control parameter: ${JSON.stringify(changedChatConfig)}`,
-                        duration: 7000,
-                        showClose: true,
-                    })
-                }
-            }, isMounted.value ? 0 : 2000)
         }
         return apiConfigChosen
     })

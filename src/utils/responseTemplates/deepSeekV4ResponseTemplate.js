@@ -342,7 +342,7 @@ function parseDeepSeekResponseText(text, template) {
             return message
         }
         const end = reasoningEnd === -1 ? toolCallsStart : reasoningEnd
-        const reasoning = stripRepeatedThinkBegin(remainingText.slice(reasoningStart, end)).replace(/\n+$/, '')
+        const reasoning = stripRepeatedThinkBegin(remainingText.slice(reasoningStart, end))
         if (reasoning) {
             message.reasoning = reasoning
         }
@@ -721,6 +721,10 @@ export function testDeepSeekV4ResponseTemplate() {
             throw new Error(`${label}\n  actual  : ${JSON.stringify(actual)}\n  expected: ${JSON.stringify(expected)}`)
         }
     }
+    for (const whitespace of ['\n', '\n\n', '\r\n', ' \n']) {
+        const raw = `${THINK_BEGIN}Check the sum.${whitespace}${THINK_END}4`
+        assertEqual(template.apply(template.parse({ tokens: raw })).templatedPrompt, raw, 'reasoning whitespace round-trip')
+    }
     const message = {
         role: 'assistant',
         reasoning: 'Okay, I see the only tool available is get_weather, I will say hi and call tools.',
@@ -818,5 +822,5 @@ export function testDeepSeekV4ResponseTemplate() {
     assertEqual(DeepSeekV4ResponseTemplate.match({
         responseTemplateConfig: { name_or_path: 'deepseek-ai/DeepSeek-V4.1-Flash' },
     }), false, 'V4.1 mismatch')
-    return partialMessageTestCount + 10
+    return partialMessageTestCount + 14
 }
