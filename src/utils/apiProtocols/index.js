@@ -3,6 +3,7 @@ import { OpenAI, normalizeStream } from '../fetchOpenaiApi.js'  // TODO: git mv 
 import { buildResponseTemplate, buildViewTokens } from '../responseTemplates/index.js'
 import { createAnthropicMessagesStream } from './anthropicMessages.js'
 import { createGeminiGenerateContentStream } from './geminiGenerateContent.js'
+import { createVllmDeepSeekContinuationStream } from './vllmDeepSeekContinuation.js'
 
 function createNonStreamChatCompletionStream({ response, requestBody, apiConfig } = {}) {
     const choice = response.choices[0]
@@ -97,6 +98,10 @@ export async function createChatCompletionsStream({ requestBody, apiConfig, sign
     }
     for (const message of requestBody.messages || []) {
         delete message.sidecar
+    }
+    if (requestBody.continue_final_message && apiConfig.response_template?.continuation === 'vllm_deepseek_v4') {
+        const stream = await createVllmDeepSeekContinuationStream({ requestBody, apiConfig, signal })
+        return normalizeStream({ stream, requestBody, apiConfig })
     }
     const openai = new OpenAI(ObjctKeyToCamelCaseNaming(apiConfig.client_config))
     const completion = await openai.chat.completions.create(requestBody, { signal })

@@ -1,7 +1,15 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark" style="background: #101318; color: #e3e8ef; color-scheme: dark;">
   <head>
     <meta charset="UTF-8">
+    <script>
+      try {
+        if (localStorage.getItem('onPandaTheme') === 'light') {
+          document.documentElement.classList.remove('dark')
+          document.documentElement.style.cssText = 'color-scheme: light;'
+        }
+      } catch {}
+    </script>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐼</text></svg>">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>onPanda</title>

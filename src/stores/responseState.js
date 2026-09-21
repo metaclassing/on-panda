@@ -14,7 +14,7 @@ import { WarningState } from './warningState.js'
 import { defaultApiConfig } from './controlParameterState.js'
 import { ToolManageStateClosure, ToolCallStateClosure, browserAgentMcpUrl } from './toolState.js'
 
-export const defaultMessages = [{ role: "system", content: "" }, { role: "user", content: "" }]
+export const defaultMessages = [{ role: "system", content: import.meta.env.VITE_ON_PANDA_DEFAULT_SYSTEM_PROMPT || "" }, { role: "user", content: "" }]
 
 export function ResponseStateClosure({ messages = null, apiConfig = null, toolManageState = null } = {}) {
     /*
@@ -116,6 +116,7 @@ export function ResponseStateClosure({ messages = null, apiConfig = null, toolMa
         generating: false,
         requestModel: "",
     })
+    let activeGeneration = null
 
     function setGenerationTokens(newTokens) {
         tokens.value = newTokens
@@ -222,6 +223,12 @@ export function ResponseStateClosure({ messages = null, apiConfig = null, toolMa
         var requestModel = apiConfig.value.chat_config.model
 
         const fetchController = new AbortController();
+        if (activeGeneration) {
+            activeGeneration.cancelled = true
+            activeGeneration.controller.abort()
+        }
+        const generation = { controller: fetchController, cancelled: false }
+        activeGeneration = generation
 
         var FIRST_TOKEN_TIMEOUT_SECOND = 5 * 60
         let firstTokenTimeoutId = setTimeout(() => {
@@ -251,11 +258,11 @@ export function ResponseStateClosure({ messages = null, apiConfig = null, toolMa
                     console.log(new Error(`Request ID mismatch ${requestID} !== ${requestStatus.value.requestTimes}, stope request ID ${requestID}`))
 
                     fetchController.abort()  // tell server to stop generating for saving resource
-                    return
+                    return false
                 }
                 if (!requestStatus.value.generating) {
                     fetchController.abort()
-                    return
+                    return false
                 }
                 if (continue_final_message && !tokenIndex) { // before affect to tokens
                     // to remove the last token's finish_reason
@@ -271,7 +278,9 @@ export function ResponseStateClosure({ messages = null, apiConfig = null, toolMa
                     tokensValuePtr = tokens.value
                     tokenIndex = tokens.value.length
                     const firstDelta = chunk?.choices?.[0]?.delta
-                    if (!firstDelta?.content && !firstDelta?.reasoning && !firstDelta?.tool_calls?.length) {
+                    const firstChoice = chunk?.choices?.[0]
+                    if (!firstDelta?.content && !firstDelta?.reasoning && !firstDelta?.tool_calls?.length &&
+                        !firstChoice?.finish_reason && !firstChoice?.logprobs?.content?.length && !firstChoice?.token_ids?.length) {
                         continue  // ignore empty first continuation chunks
                     }
                 }
@@ -347,15 +356,26 @@ export function ResponseStateClosure({ messages = null, apiConfig = null, toolMa
                     // p(token.delta?.content, token)
                 }
             }
+            if (generation.cancelled || requestID !== requestStatus.value.requestTimes) {
+                if (requestID === requestStatus.value.requestTimes && tokensValuePtr === tokens.value) concatTokens()
+                return false
+            }
             concatTokens()
             requestStatus.value.generating = false
             runDialogChangedHooks()
 
         } catch (error) {
+            if (generation.cancelled || requestID !== requestStatus.value.requestTimes) {
+                if (requestID === requestStatus.value.requestTimes && tokensValuePtr === tokens.value) concatTokens()
+                return false
+            }
             requestStatus.value.generating = false
             warning(error)
-            clearTimeout(firstTokenTimeoutId)
             throw error
+        } finally {
+            clearTimeout(firstTokenTimeoutId)
+            if (activeGeneration === generation) activeGeneration = null
+            if (requestID === requestStatus.value.requestTimes) requestStatus.value.generating = false
         }
     }
 
@@ -609,7 +629,8 @@ ${addedFiles.map(({ key, handleOrEntry }) => `- \`${key}\`: ${handleOrEntry.cons
                         on_policy: true,
                     })
                 }
-                await requestLlmServer(messagesComputed.value)
+                const completed = await requestLlmServer(messagesComputed.value)
+                if (completed === false) break
                 this.pandaState.beforeOperation()
                 lastMessage = messagesComputed.value[messagesComputed.value.length - 1] || {}
                 finishReason = lastMessage.finish_reason
@@ -673,6 +694,10 @@ ${addedFiles.map(({ key, handleOrEntry }) => `- \`${key}\`: ${handleOrEntry.cons
 
         stopGenerating = () => {
             this.pandaState.beforeOperation()
+            if (activeGeneration) {
+                activeGeneration.cancelled = true
+                activeGeneration.controller.abort()
+            }
             requestStatus.value.generating = false
         }
 
@@ -961,6 +986,8 @@ ${addedFiles.map(({ key, handleOrEntry }) => `- \`${key}\`: ${handleOrEntry.cons
         }
         delete token.delta.reasoning
         token.delta.content = continuePrefix
+        // The replacement text no longer has the rejected token's identity.
+        delete token.token_ids
         token.bifurcationPoint = true
         token.pruned = false
         if (token.logprobs?.content?.[0]) {
@@ -970,6 +997,8 @@ ${addedFiles.map(({ key, handleOrEntry }) => `- \`${key}\`: ${handleOrEntry.cons
                 delete token.logprobs.content[0].logprob
             }
             token.logprobs.content[0].token = continuePrefix
+            delete token.logprobs.content[0].token_ids
+            delete token.logprobs.content[0].bytes
         }
         tokens.value.splice(token.tokenIndex, 0, token);
     }

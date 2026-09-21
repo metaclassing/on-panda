@@ -355,7 +355,7 @@ export class PandaState {
             dialogs: {
                 1: {
                     messages: [
-                        { role: "system", content: "" },
+                        { role: "system", content: import.meta.env.VITE_ON_PANDA_DEFAULT_SYSTEM_PROMPT || "" },
                         { role: "user", content: "" }],
                     annotate: {
                         is_good: null

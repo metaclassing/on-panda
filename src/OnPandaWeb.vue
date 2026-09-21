@@ -1,38 +1,13 @@
 <template>
-  <div ref="onPandaContainerRef" :style="isMobile ? {} : { width: '90%', margin: '1em auto 2em' }"
-    class="onPandaContainerRef onPandaContainers">
-    <OnPandaHeader>
-      <template #customInfoForUser>
-        <small style="color: #555;" v-if="customInfoForUser">
-          <br>
-          <hr>
-          <MarkdownRender :content="customInfoForUser" />
-        </small>
-      </template>
-    </OnPandaHeader>
-
-    <el-divider content-position="left">
-      {{ t('common.examples') }}:
-    </el-divider>
-    <OnPandaExamples :dialogWithControlState="dialogWithControlState" ref="onPandaExamplesRef" />
-
-    <el-divider content-position="left" style="margin-bottom: 5px;">
-      <b>{{ t('common.dialog') }}:</b>
-    </el-divider>
-    <OnPandaDialogWithControl :dialogWithControlState="dialogWithControlState" />
+  <div ref="onPandaContainerRef" class="onPandaContainerRef onPandaContainers">
+    <OnPandaHeader @open-settings="dialogPanelRef?.openSettings()" />
+    <OnPandaDialogWithControl ref="dialogPanelRef" :dialogWithControlState="dialogWithControlState" />
 
     <div v-if="responseState.warningContent.value"
       style="background-color: #fdd;white-space: pre-wrap;overflow-x: scroll; padding: 10px">
       <h3>Error Messages:</h3>
       <div v-html="responseState.warningContent.value"></div>
     </div>
-    <footer class="feedbackFooter">
-      <small>
-        {{ t('footer.feedback') }} ->
-        <a href="https://github.com/on-panda/on-panda" target="_blank" rel="noopener noreferrer">GitHub</a>
-      </small>
-    </footer>
-    <br v-for="_ in (isMobile ? 12 : 0)">
   </div>
 </template>
 
@@ -44,15 +19,13 @@ import { ref, computed, watch } from 'vue'
 import { onMounted, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import { p, tryLoadDuplicateWindow, sleep } from './utils/commonUtils.js'
+import { p, tryLoadDuplicateWindow } from './utils/commonUtils.js'
 import { useGlobalStore } from './stores/globalStore.js'
 import { defaultMessages } from './stores/responseState.js'
 import { defaultApiConfig } from './stores/controlParameterState.js'
 import { DialogWithControlStateClosure } from './stores/dialogWithControlState.js'
 
-import MarkdownRender from './components/widgets/MarkdownRender.vue'
 import OnPandaHeader from './components/OnPandaHeader.vue'
-import OnPandaExamples from './components/OnPandaExamples.vue'
 import OnPandaDialogWithControl from './components/OnPandaDialogWithControl.vue'
 
 const props = defineProps({
@@ -84,7 +57,6 @@ const { t } = useI18n()
 
 const globalStore = useGlobalStore()
 var isMobile = computed(() => globalStore.isMobile)
-const customInfoForUser = computed(() => props.customInfoForUser + globalStore.customInfoForUser)
 const modelNameTagsInput = computed(() => {
   if (props.modelNameTags) {
     return { ...props.modelNameTags, ...globalStore.customModelNameTags }
@@ -105,11 +77,9 @@ const tokens = responseState.tokens
 const agenticLoopStatus = responseState.agenticLoopStatus
 const operationCenter = responseState.operationCenter
 
-const onPandaExamplesRef = ref(null)
+const dialogPanelRef = ref(null)
 
-if (globalStore.isOldUser) {
-  operationCenter.loadMessages(defaultMessages, toolManageState.presetToolConfigsInput)
-}
+operationCenter.loadMessages(defaultMessages, toolManageState.presetToolConfigsInput)
 
 
 
@@ -125,21 +95,7 @@ watch(modelName, async function watchModelName(newValue) {  // set modelName to 
 // ref="responseState.onPandaContainerRef" does not work
 const onPandaContainerRef = ref(null)
 
-// Default debug run: the browser-agent weather card. require_approval 'always' keeps the agentic loop from running unattended.
-function defaultDebugRun({ responseState, controlParameterState }) {
-  const { operationCenter } = responseState
-  controlParameterState.modelName.value = controlParameterState.modelNameTagsComputed.value['default-agent-tag'] || 'default-agent-tag'
-  operationCenter.loadMessages(
-    [{ role: "user", content: "Build an animated weather card about my city in the bottom-right corner" }],
-    [{ type: 'mcp', server_url: 'local-fetch://browser-agent-mcp', require_approval: 'always' }]
-  )
-  operationCenter.generateNew()
-}
-
 onMounted(async () => {
-  if (!globalStore.isOldUser) {
-    onPandaExamplesRef.value.loadWelcomeMessages()
-  }
   async function loadRuntimeImport() {
     const runtimeImport = import.meta.env.VITE_ON_PANDA_WEB_RUNTIME_IMPORT
     if (!runtimeImport) {
@@ -179,7 +135,7 @@ onMounted(async () => {
     console.error('Failed to load custom.js:', error)
   }
 
-  var onMountedRun = () => { }
+  var onMountedRun = null
 
   if (tryLoadDuplicateWindow(responseState.pandaState)) { // duplicate window has higher priority
     if (localStorage.getItem('modelNameForDuplicateWindow')) {
@@ -187,22 +143,12 @@ onMounted(async () => {
       localStorage.removeItem('modelNameForDuplicateWindow')
       onMountedRun = () => operationCenter.generateNew({ fromUser: true })
     }
-  } else {
-    if (!globalStore.isOldUser) {
-      // Set default model for new users
-      modelName.value = modelNameTagsComputed.value['on-panda'] || 'on-panda'
-      onMountedRun = operationCenter.generateNew
-    }
-    if (globalStore.debug) {
-      onMountedRun = globalStore.debugRun || defaultDebugRun
-    }
   }
   async function afterApiAndToolReady() {
     await controlParameterState.apiUpdateCompletedPromise.value
     await toolManageState.presetToolReadyPromise.value.catch(responseState.warning)
-    await sleep(5)
     if (!agenticLoopStatus.running && onMountedRun) {
-      await onMountedRun(dialogWithControlState, onPandaExamplesRef.value.exampleNameToFunc)
+      await onMountedRun(dialogWithControlState)
     }
     if (globalStore.debug) {
       p("tokens", tokens)
